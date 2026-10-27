@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Route watch</title>
+  <style>
+    :root {
+      --sheet: #e7ebf0;
+      --ink: #1c2430;
+      --quiet: #3d4754;
+      --rule: #c5ced6;
+      --copper: #8d4e28;
+      --alert: #9d2424;
+      --alarm-bg: #f6e7e4;
+      --gap: #8b97a3;
+      --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", serif;
+      --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--sheet);
+      color: var(--ink);
+      font-family: var(--serif);
+      font-size: 17px;
+      line-height: 1.4;
+    }
+
+    .wrap { max-width: 1120px; margin: 0 auto; }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 24px;
+      padding: 28px 32px 8px;
+    }
+
+    .title {
+      margin: 0 0 8px;
+      color: var(--quiet);
+      font-size: 15px;
+    }
+
+    .lede {
+      margin: 0;
+      max-width: 38em;
+      font-size: 22px;
+      line-height: 1.35;
+    }
+
+    .mono {
+      font-family: var(--mono);
+      font-size: 0.92em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    button {
+      font: inherit;
+      font-size: 16px;
+      color: var(--ink);
+      background: transparent;
+      border: 1px solid var(--ink);
+      padding: 8px 14px;
+      cursor: pointer;
+    }
+
+    button:hover { background: var(--ink); color: var(--sheet); }
+
+    button:focus-visible {
+      outline: 2px solid var(--copper);
+      outline-offset: 3px;
+    }
+
+    .arm { border-color: var(--quiet); color: var(--quiet); white-space: nowrap; }
+    .arm.armed { border-color: var(--copper); color: var(--ink); }
+
+    .alarm {
+      margin: 16px 32px 0;
+      padding: 14px 16px;
+      background: var(--alarm-bg);
+      border-left: 4px solid var(--alert);
+      display: grid;
+      gap: 14px;
+    }
+
+    .alarm[hidden] { display: none; }
+
+    .alarm-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .alarm h2 {
+      margin: 0 0 4px;
+      font-size: 18px;
+      line-height: 1.2;
+      color: var(--alert);
+    }
+
+    .alarm p { margin: 0; }
+
+    input {
+      font: inherit;
+      font-size: 16px;
+      color: var(--ink);
+      background: transparent;
+      border: 1px solid var(--quiet);
+      padding: 8px 10px;
+      min-width: 0;
+    }
+
+    input:focus-visible {
+      outline: 2px solid var(--copper);
+      outline-offset: 2px;
+    }
+
+    .add-form, .edit {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: end;
+    }
+
+    .add-form { padding: 18px 32px 0; }
+
+    .field { display: grid; gap: 4px; }
+    .field span { color: var(--quiet); font-size: 14px; }
+    .field input.host, .edit input.host { font-family: var(--mono); font-size: 14px; width: 16rem; }
+    .field input.label, .edit input.label { width: 14rem; }
+
+    .form-error {
+      margin: 8px 32px 0;
+      color: var(--alert);
+      font-size: 15px;
+    }
+
+    .form-error[hidden] { display: none; }
+
+    button.quiet { border-color: var(--quiet); color: var(--quiet); }
+    button.remove { border-color: var(--alert); color: var(--alert); }
+
+    .columns {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      margin-top: 20px;
+      border-top: 1px solid var(--rule);
+    }
+
+    .col {
+      padding: 22px 32px 36px;
+      min-width: 0;
+      border-right: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .col-head { min-height: 118px; }
+
+    .edit { margin-top: 14px; }
+    .edit .fields {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: end;
+    }
+    .edit .fields[hidden], .edit .edit-toggle[hidden] { display: none; }
+
+    .empty {
+      margin: 0;
+      padding: 28px 32px 8px;
+      max-width: 36em;
+    }
+
+    .city {
+      margin: 0;
+      font-size: 32px;
+      line-height: 1.05;
+      font-weight: 700;
+    }
+
+    .host {
+      margin: 6px 0 0;
+      font-family: var(--mono);
+      font-size: 14px;
+    }
+
+    .status {
+      margin: 10px 0 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mark {
+      width: 8px;
+      height: 8px;
+      background: var(--copper);
+      flex: none;
+    }
+
+    .status.changed .mark,
+    .status.silent .mark { background: var(--alert); }
+    .status.learning .mark,
+    .status.starting .mark { background: var(--gap); }
+    .status.changed,
+    .status.silent { color: var(--alert); }
+
+    .age, .identity, .error, .was, .foot, .lookup {
+      margin: 4px 0 0;
+      color: var(--quiet);
+      font-size: 14px;
+    }
+
+    .error, .age.late { color: var(--alert); }
+
+    .route {
+      list-style: none;
+      margin: 18px 0 0;
+      padding: 0;
+    }
+
+    .hop {
+      display: grid;
+      grid-template-columns: 2rem 22px minmax(0, 1fr);
+      min-height: 52px;
+    }
+
+    .ttlnum {
+      margin: 0;
+      padding: 16px 6px 0 0;
+      text-align: right;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--quiet);
+    }
+
+    .rail { position: relative; }
+
+    .rail::before {
+      content: "";
+      position: absolute;
+      left: 9px;
+      top: 0;
+      bottom: 0;
+      border-left: 2px solid var(--copper);
+    }
+
+    .hop.origin .rail::before { top: 22px; }
+    .hop.dest .rail::before { bottom: auto; height: 22px; }
+
+    .hop.silent .rail::before {
+      border-left-style: dashed;
+      border-left-color: var(--gap);
+    }
+
+    .hop.changed .rail::before,
+    .hop.missing .rail::before { border-left-color: var(--alert); }
+
+    .node {
+      position: absolute;
+      left: 4px;
+      top: 16px;
+      width: 12px;
+      height: 12px;
+      box-sizing: border-box;
+      border: 2px solid var(--copper);
+      border-radius: 50%;
+      background: var(--sheet);
+    }
+
+    .hop.origin .node { background: var(--copper); }
+    .hop.silent .node {
+      width: 8px;
+      height: 8px;
+      left: 6px;
+      top: 18px;
+      border-color: var(--gap);
+    }
+
+    .hop.changed .node,
+    .hop.missing .node {
+      background: var(--alert);
+      border-color: var(--alert);
+    }
+
+    .hop.dest .node {
+      border-radius: 1px;
+      background: var(--sheet);
+      border-color: var(--ink);
+    }
+
+    .hop.dest.reached .node {
+      background: var(--ink);
+      border-color: var(--ink);
+    }
+
+    .ip {
+      margin: 12px 0 0;
+      font-family: var(--mono);
+      font-size: 15px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+
+    .hop.origin .ip,
+    .hop.dest .ip { font-family: var(--serif); font-size: 17px; }
+
+    .hop.changed .ip,
+    .hop.missing .ip { color: var(--alert); }
+
+    .meta, .was { overflow-wrap: anywhere; }
+    .meta { margin: 1px 0 0; color: var(--quiet); font-size: 14px; }
+    .was { margin: 1px 0 0; }
+
+    .log { padding: 8px 32px 12px; }
+    .log[hidden] { display: none; }
+
+    .log h2 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      font-weight: 400;
+      color: var(--quiet);
+      font-size: 14px;
+      padding: 0 16px 6px 0;
+    }
+    td {
+      border-top: 1px solid var(--rule);
+      padding: 10px 16px 10px 0;
+      vertical-align: top;
+    }
+    td.when { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+    .foot, .lookup { padding: 0 32px 28px; max-width: 62ch; }
+    .lookup { padding-bottom: 0; }
+
+    @media (max-width: 800px) {
+      header, .alarm-row, .add-form, .edit, .edit .fields { flex-direction: column; align-items: stretch; }
+      .columns { grid-template-columns: 1fr; }
+      .col { border-right: 0; }
+      .col-head { min-height: 0; }
+      .lede { font-size: 20px; }
+      .field input.host, .field input.label, .edit input.host, .edit input.label { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <p class="title">Route watch</p>
+        <p class="lede" id="lede">Add a destination to watch its path.</p>
+      </div>
+      <button class="arm" id="arm" type="button">Arm sound and notifications</button>
+    </header>
+    <form class="add-form" id="add-form">
+      <label class="field"><span>Label</span>
+        <input class="label" id="add-label" name="label" autocomplete="off" required maxlength="80">
+      </label>
+      <label class="field"><span>Address</span>
+        <input class="host" id="add-host" name="host" autocomplete="off" required spellcheck="false" placeholder="203.0.113.10">
+      </label>
+      <button type="submit">Add destination</button>
+    </form>
+    <p class="form-error" id="form-error" hidden></p>
+    <div class="alarm" id="alarm" hidden></div>
+    <div class="columns" id="columns"></div>
+    <section class="log" id="log" hidden>
+      <h2>Changes</h2>
+      <table>
+        <thead>
+          <tr><th>When</th><th>Destination</th><th>What changed</th></tr>
+        </thead>
+        <tbody id="log-body"></tbody>
+      </table>
+    </section>
+    <p class="foot" id="foot"></p>
+  </div>
+  <script>
+    const ledeEl = document.getElementById("lede");
+    const alarmEl = document.getElementById("alarm");
+    const columnsEl = document.getElementById("columns");
+    const logEl = document.getElementById("log");
+    const logBody = document.getElementById("log-body");
+    const footEl = document.getElementById("foot");
+    const armBtn = document.getElementById("arm");
+    const addForm = document.getElementById("add-form");
+    const formError = document.getElementById("form-error");
+
+    let latest = null;
+    let ledeKey = "";
+    let footKey = "";
+    let alarmKey = "";
+    let logKey = "";
+    const headKeys = new Map();
+    let armed = false;
+    let audioCtx = null;
+    const heard = new Set();
+    const columnKeys = new Map();
+
+    armBtn.addEventListener("click", async () => {
+      armed = true;
+      armBtn.classList.add("armed");
+      audioCtx = new AudioContext();
+      let note = "Sound and notifications are armed";
+      if ("Notification" in window) {
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") note = "Sound is armed. Notifications are blocked in the browser.";
+      }
+      armBtn.textContent = note;
+    });
+
+    function beep() {
+      if (!armed || !audioCtx) return;
+      const start = audioCtx.currentTime;
+      [523.25, 659.25].forEach((freq, index) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        const at = start + index * 0.14;
+        gain.gain.setValueAtTime(0.0001, at);
+        gain.gain.exponentialRampToValueAtTime(0.05, at + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.16);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(at);
+        osc.stop(at + 0.18);
+      });
+    }
+
+    function notify(target) {
+      if (!armed || !("Notification" in window) || Notification.permission !== "granted") return;
+      const note = new Notification(target.name + " route changed", { body: target.banner.summary });
+      note.onclick = () => { window.focus(); note.close(); };
+    }
+
+    function duration(seconds) {
+      const whole = Math.max(0, Math.round(seconds));
+      const hours = Math.floor(whole / 3600);
+      const minutes = Math.floor((whole % 3600) / 60);
+      const secs = whole % 60;
+      if (hours > 0) return hours + "h " + minutes + "m";
+      if (minutes > 0) return minutes + "m " + secs + "s";
+      return secs + "s";
+    }
+
+    function statusText(target) {
+      if (target.status === "changed") return "Route changed";
+      if (target.status === "starting") return "First probe is out";
+      if (target.status === "learning") return "Learning the path, " + target.samples + " of " + target.learn_samples;
+      if (target.status === "silent") return "No hop has answered";
+      if (target.stable_since) return "Stable for " + duration(Date.now() / 1000 - target.stable_since);
+      return "Stable";
+    }
+
+    function shownAddress(hop) {
+      if (hop.mark === "missing") return (hop.was && hop.was[0]) || hop.hold || hop.ip || "";
+      return hop.ip || hop.hold || "";
+    }
+
+    function metaLine(hop) {
+      const bits = [];
+      if (hop.name) bits.push(hop.name);
+      else if (hop.local) bits.push("private network");
+      if (hop.rtt_ms != null) bits.push(hop.rtt_ms.toFixed(1) + " ms");
+      if (!hop.ip && hop.hold && hop.mark !== "missing") bits.push("no reply this probe");
+      if (hop.also && hop.also.length) bits.push("also " + hop.also.join(", "));
+      if (hop.mark === "watching") bits.push("seen once, waiting for the next probe");
+      if (hop.mark === "missing") bits.push("stopped answering");
+      return bits.join(", ");
+    }
+
+    function destCopy(target) {
+      if (target.status === "starting") return "Waiting for the first probe.";
+      if (target.reached) return "The trace reaches this address.";
+      return "The trace stops before this address.";
+    }
+
+    function showError(message) {
+      formError.hidden = !message;
+      formError.textContent = message || "";
+    }
+
+    async function postJSON(url, body) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const payload = await response.json().catch(() => ({ ok: false, error: "The watch did not answer." }));
+      if (!response.ok || payload.ok === false) throw new Error(payload.error || "That change was not saved.");
+      showError("");
+      return payload;
+    }
+
+    function hopKey(target) {
+      const hops = target.hops.map((hop) => [
+        hop.ttl, shownAddress(hop) || "*", hop.mark, hop.name || "", (hop.was || []).join(","), (hop.also || []).join(",")
+      ].join(":")).join("|");
+      return [target.host, target.name, target.reached, hops].join("~");
+    }
+
+    function buildHop(className, ttl, title, meta, was) {
+      const item = document.createElement("li");
+      item.className = "hop " + className;
+      const num = document.createElement("p");
+      num.className = "ttlnum";
+      num.textContent = ttl || "";
+      const rail = document.createElement("div");
+      rail.className = "rail";
+      rail.setAttribute("aria-hidden", "true");
+      const node = document.createElement("span");
+      node.className = "node";
+      rail.append(node);
+      const body = document.createElement("div");
+      body.className = "hop-body";
+      const ip = document.createElement("p");
+      ip.className = "ip";
+      ip.textContent = title;
+      body.append(ip);
+      if (meta) {
+        const line = document.createElement("p");
+        line.className = "meta";
+        line.dataset.ttl = String(ttl || "x");
+        line.textContent = meta;
+        body.append(line);
+      }
+      if (was && was.length) {
+        const previous = document.createElement("p");
+        previous.className = "was";
+        previous.textContent = "was " + was.join(" or ");
+        body.append(previous);
+      }
+      item.append(num, rail, body);
+      return item;
+    }
+
+    function buildRoute(target) {
+      const list = document.createElement("ol");
+      list.className = "route";
+      list.setAttribute("aria-label", target.name + " path");
+      list.append(buildHop("origin", "", "This machine", latest.source, null));
+      target.hops.forEach((hop) => {
+        const title = shownAddress(hop) || "No reply";
+        const item = buildHop(hop.mark, hop.ttl, title, metaLine(hop), hop.mark === "changed" ? hop.was : []);
+        item.dataset.ttl = String(hop.ttl);
+        list.append(item);
+      });
+      const dest = buildHop(target.reached ? "dest reached" : "dest", "", target.name, destCopy(target), null);
+      const addr = document.createElement("p");
+      addr.className = "meta mono";
+      addr.textContent = target.host || "";
+      dest.querySelector(".hop-body").append(addr);
+      list.append(dest);
+      return list;
+    }
+
+    function labeledField(caption, input) {
+      const wrap = document.createElement("label");
+      wrap.className = "field";
+      const span = document.createElement("span");
+      span.textContent = caption;
+      wrap.append(span, input);
+      return wrap;
+    }
+
+    function ensureColumn(target) {
+      let col = document.getElementById("col-" + target.id);
+      if (col) return col;
+      col = document.createElement("section");
+      col.id = "col-" + target.id;
+      col.className = "col";
+      col.innerHTML = '<div class="col-head"></div><form class="edit"></form><div class="route-slot"></div>';
+      const form = col.querySelector(".edit");
+      const labelInput = document.createElement("input");
+      labelInput.className = "label";
+      labelInput.maxLength = 80;
+      labelInput.value = target.name;
+      labelInput.dataset.dirty = "0";
+      const hostInput = document.createElement("input");
+      hostInput.className = "host";
+      hostInput.spellcheck = false;
+      hostInput.value = target.host;
+      hostInput.dataset.dirty = "0";
+      [labelInput, hostInput].forEach((input) => {
+        input.addEventListener("input", () => { input.dataset.dirty = "1"; });
+      });
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "quiet edit-toggle";
+      toggle.textContent = "Edit";
+      const fields = document.createElement("div");
+      fields.className = "fields";
+      fields.hidden = true;
+      const save = document.createElement("button");
+      save.type = "submit";
+      save.className = "quiet";
+      save.textContent = "Save";
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "quiet";
+      cancel.textContent = "Cancel";
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "remove";
+      remove.textContent = "Remove";
+      fields.append(labeledField("Label", labelInput), labeledField("Address", hostInput), save, cancel, remove);
+      form.append(toggle, fields);
+      function closeEditor() {
+        const city = col.querySelector(".city");
+        const host = col.querySelector(".col-head .host");
+        if (city) labelInput.value = city.textContent;
+        if (host) hostInput.value = host.textContent;
+        labelInput.dataset.dirty = "0";
+        hostInput.dataset.dirty = "0";
+        fields.hidden = true;
+        toggle.hidden = false;
+      }
+      toggle.addEventListener("click", () => {
+        fields.hidden = false;
+        toggle.hidden = true;
+        labelInput.focus();
+      });
+      cancel.addEventListener("click", closeEditor);
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        postJSON("/api/destinations/update", {
+          id: target.id,
+          label: labelInput.value,
+          host: hostInput.value
+        }).then(() => {
+          labelInput.dataset.dirty = "0";
+          hostInput.dataset.dirty = "0";
+          fields.hidden = true;
+          toggle.hidden = false;
+        }).catch((error) => showError(error.message));
+      });
+      remove.addEventListener("click", () => {
+        const label = labelInput.value.trim() || "this destination";
+        if (!window.confirm("Remove " + label + "?")) return;
+        postJSON("/api/destinations/remove", { id: target.id }).catch((error) => showError(error.message));
+      });
+      columnsEl.append(col);
+      return col;
+    }
+
+    function renderHead(col, target) {
+      const progress = target.status === "learning" ? target.samples : "";
+      const key = [target.host, target.name, target.status, progress, target.error].join("|");
+      const head = col.querySelector(".col-head");
+      if (headKeys.get(target.id) === key && head.childElementCount) {
+        const status = head.querySelector(".status span");
+        if (status) status.textContent = statusText(target);
+        return;
+      }
+      headKeys.set(target.id, key);
+      const late = target.probed_at && (Date.now() / 1000 - target.probed_at) > 3;
+      head.replaceChildren();
+      const city = document.createElement("h2");
+      city.className = "city";
+      city.textContent = target.name;
+      const host = document.createElement("p");
+      host.className = "host";
+      host.textContent = target.host;
+      const statusP = document.createElement("p");
+      statusP.className = "status " + target.status;
+      const mark = document.createElement("i");
+      mark.className = "mark";
+      mark.setAttribute("aria-hidden", "true");
+      const statusLabel = document.createElement("span");
+      statusLabel.textContent = statusText(target);
+      statusP.append(mark, statusLabel);
+      head.append(city, host, statusP);
+      const age = document.createElement("p");
+      age.className = late ? "age late" : "age";
+      age.id = "age-" + target.id;
+      age.textContent = ageText(target);
+      head.append(age);
+      if (target.error) {
+        const err = document.createElement("p");
+        err.className = "error";
+        err.textContent = target.error;
+        head.append(err);
+      }
+    }
+
+    function syncEditor(col, target) {
+      [[".edit .label", target.name], [".edit .host", target.host]].forEach(([selector, value]) => {
+        const input = col.querySelector(selector);
+        if (!input || document.activeElement === input) return;
+        if (input.dataset.dirty === "1" && input.value !== value) return;
+        input.value = value;
+        input.dataset.dirty = "0";
+      });
+    }
+
+    function ageText(target) {
+      if (!target.probed_at) return "Waiting for the first probe";
+      const ago = Date.now() / 1000 - target.probed_at;
+      if (ago < 1.2) return "Probed just now";
+      return "Probed " + Math.floor(ago) + "s ago";
+    }
+
+    function updateRtts(col, target) {
+      target.hops.forEach((hop) => {
+        const item = col.querySelector('.hop[data-ttl="' + hop.ttl + '"] .meta');
+        if (item) item.textContent = metaLine(hop);
+      });
+    }
+
+    function mapHops(target) {
+      const mapped = new Map();
+      if (!target) return mapped;
+      target.hops.forEach((hop) => {
+        const address = shownAddress(hop);
+        if (address && hop.mark !== "missing") mapped.set(hop.ttl, Object.assign({}, hop, { ip: address }));
+      });
+      return mapped;
+    }
+
+    function pathAddresses(hop) {
+      const all = new Set();
+      if (hop.ip) all.add(hop.ip);
+      if (hop.hold) all.add(hop.hold);
+      (hop.also || []).forEach((ip) => all.add(ip));
+      return [...all].sort();
+    }
+
+    function appendVia(parent, hop) {
+      const addresses = pathAddresses(hop);
+      if (!addresses.length && hop.ip) addresses.push(hop.ip);
+      if (hop.name && addresses.length === 1) parent.append(hop.name + " ");
+      addresses.forEach((ip, index) => {
+        if (index) parent.append(" or ");
+        const code = document.createElement("span");
+        code.className = "mono";
+        code.textContent = ip;
+        parent.append(code);
+      });
+    }
+
+    function appendSide(parent, city, hop) {
+      parent.append(city + " ");
+      if (!hop || !hop.ip) {
+        parent.append("got no reply");
+        return;
+      }
+      parent.append("via ");
+      appendVia(parent, hop);
+    }
+
+    function buildPairLede(leftTarget, rightTarget) {
+      const frag = document.createDocumentFragment();
+      const left = mapHops(leftTarget);
+      const right = mapHops(rightTarget);
+      const ttls = [...new Set([...left.keys(), ...right.keys()])].sort((a, b) => a - b);
+      if (!ttls.length) {
+        const starting = leftTarget.status === "starting" && rightTarget.status === "starting";
+        frag.append(starting
+          ? "Tracing the path to " + leftTarget.name + " and " + rightTarget.name + "."
+          : "No router has answered either trace yet.");
+        return frag;
+      }
+      let sharedThrough = 0;
+      let split = null;
+      let rejoin = null;
+      let seenSplit = false;
+      ttls.forEach((ttl) => {
+        const a = left.get(ttl) || null;
+        const b = right.get(ttl) || null;
+        if (a && b && pathAddresses(a).join("|") === pathAddresses(b).join("|")) {
+          if (!seenSplit) sharedThrough = ttl;
+          else if (!rejoin) rejoin = { ttl, hop: a };
+        } else if (!seenSplit && ((a && b && a.ip !== b.ip) || (a && !b) || (!a && b))) {
+          seenSplit = true;
+          split = { ttl, a, b };
+        }
+      });
+      if (!split) {
+        frag.append(leftTarget.name + " and " + rightTarget.name + " are on the same path through hop " + sharedThrough + ".");
+        return frag;
+      }
+      if (sharedThrough) {
+        frag.append("Through hop " + sharedThrough + " both destinations share one path. ");
+      }
+      frag.append("At hop " + split.ttl + " they split: ");
+      appendSide(frag, leftTarget.name, split.a);
+      frag.append(", ");
+      appendSide(frag, rightTarget.name, split.b);
+      frag.append(".");
+      if (rejoin) {
+        frag.append(" They meet again at hop " + rejoin.ttl + ", ");
+        appendVia(frag, rejoin.hop);
+        frag.append(".");
+      }
+      return frag;
+    }
+
+    function buildLede(targets) {
+      const frag = document.createDocumentFragment();
+      if (!targets.length) {
+        frag.append("Add a destination to watch its path.");
+        return frag;
+      }
+      if (targets.length === 1) {
+        frag.append("Tracing the path to " + targets[0].name + ".");
+        return frag;
+      }
+      if (targets.length === 2) return buildPairLede(targets[0], targets[1]);
+      frag.append("Watching " + targets.length + " paths from this machine.");
+      return frag;
+    }
+
+    function renderLede(data) {
+      const key = JSON.stringify(data.targets.map((target) => ({
+        name: target.name,
+        status: target.status,
+        hops: target.hops.map((hop) => [hop.ttl, pathAddresses(hop), hop.name, hop.mark === "missing"])
+      })));
+      if (key === ledeKey) return;
+      ledeKey = key;
+      ledeEl.replaceChildren(buildLede(data.targets));
+    }
+
+    function renderAlarm(data) {
+      const active = data.targets.filter((target) => target.banner);
+      const key = active.map((target) => target.id + ":" + target.banner.id + ":" + target.banner.summary).join("|");
+      alarmEl.hidden = active.length === 0;
+      document.title = active.length
+        ? "Route changed, " + active.map((target) => target.name).join(" and ")
+        : "Route watch";
+      if (key === alarmKey) return;
+      alarmKey = key;
+      alarmEl.replaceChildren();
+      active.forEach((target) => {
+        const row = document.createElement("div");
+        row.className = "alarm-row";
+        const copy = document.createElement("div");
+        const heading = document.createElement("h2");
+        heading.textContent = target.name + " route changed";
+        const summary = document.createElement("p");
+        summary.textContent = target.banner.summary;
+        copy.append(heading, summary);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "Clear alert";
+        button.addEventListener("click", () => {
+          fetch("/api/ack", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: target.id })
+          });
+        });
+        row.append(copy, button);
+        alarmEl.append(row);
+      });
+    }
+
+    function renderColumns(data) {
+      const ids = new Set(data.targets.map((target) => target.id));
+      [...columnsEl.querySelectorAll(".col")].forEach((col) => {
+        const id = col.id.slice(4);
+        if (ids.has(id)) return;
+        col.remove();
+        columnKeys.delete(id);
+        headKeys.delete(id);
+      });
+      const empty = columnsEl.querySelector(".empty");
+      if (!data.targets.length) {
+        if (!empty) {
+          const note = document.createElement("p");
+          note.className = "empty";
+          note.textContent = "No destinations yet. Add a label and an address above.";
+          columnsEl.append(note);
+        }
+        return;
+      }
+      if (empty) empty.remove();
+      data.targets.forEach((target) => {
+        const col = ensureColumn(target);
+        syncEditor(col, target);
+        renderHead(col, target);
+        const key = hopKey(target);
+        const slot = col.querySelector(".route-slot");
+        if (columnKeys.get(target.id) !== key) {
+          columnKeys.set(target.id, key);
+          slot.replaceChildren(buildRoute(target));
+        } else {
+          updateRtts(col, target);
+        }
+      });
+    }
+
+    function renderLog(data) {
+      logEl.hidden = data.log.length === 0;
+      const key = data.log.map((entry) => entry.at + entry.summary).join("|");
+      if (key === logKey) return;
+      logKey = key;
+      logBody.replaceChildren();
+      data.log.forEach((entry) => {
+        const row = document.createElement("tr");
+        const when = document.createElement("td");
+        when.className = "when";
+        when.textContent = new Date(entry.at * 1000).toLocaleTimeString();
+        const gateway = document.createElement("td");
+        gateway.textContent = entry.label;
+        const what = document.createElement("td");
+        what.textContent = entry.summary;
+        row.append(when, gateway, what);
+        logBody.append(row);
+      });
+    }
+
+    function renderFoot(data) {
+      const every = data.interval_s === 1 ? "second" : data.interval_s + " seconds";
+      const key = every + "|" + data.source;
+      if (key === footKey) return;
+      footKey = key;
+      footEl.textContent = "Checked every " + every + " from " + data.source + ". UDP traceroute, one probe per hop, sent together. A new router has to answer twice in a row before it counts as a change. In the first minute, a hop that starts answering joins the path quietly. A hop that answered on every learning probe raises an alarm after eight silent probes. A router that takes the place of another raises an alarm.";
+    }
+
+    addForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const label = document.getElementById("add-label").value;
+      const host = document.getElementById("add-host").value;
+      postJSON("/api/destinations", { label, host }).then(() => {
+        addForm.reset();
+        document.getElementById("add-label").focus();
+      }).catch((error) => showError(error.message));
+    });
+
+    function render(data) {
+      latest = data;
+      renderLede(data);
+      renderAlarm(data);
+      renderColumns(data);
+      renderLog(data);
+      renderFoot(data);
+      data.targets.forEach((target) => {
+        if (!target.banner || heard.has(target.banner.id)) return;
+        heard.add(target.banner.id);
+        beep();
+        notify(target);
+      });
+    }
+
+    function refreshAges() {
+      if (!latest) return;
+      latest.targets.forEach((target) => {
+        const age = document.getElementById("age-" + target.id);
+        if (!age) return;
+        const late = target.probed_at && (Date.now() / 1000 - target.probed_at) > 3;
+        age.className = late ? "age late" : "age";
+        age.textContent = ageText(target);
+        const status = document.querySelector("#col-" + target.id + " .status span");
+        if (status && target.status === "stable") status.textContent = statusText(target);
+      });
+    }
+
+    setInterval(refreshAges, 250);
+
+    const events = new EventSource("/api/events");
+    events.onmessage = (event) => render(JSON.parse(event.data));
+    events.onerror = () => {
+      if (ledeEl.textContent.indexOf("watch") === -1) return;
+    };
+    fetch("/api/state").then((response) => response.json()).then(render).catch(() => {
+      ledeEl.textContent = "The watch is not answering on this page.";
+    });
+  </script>
+</body>
+</html>
